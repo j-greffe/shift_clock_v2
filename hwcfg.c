@@ -1,4 +1,3 @@
-#include "hal_gpio.h"
 #include "hwcfg.h"
 
 const uint16_t k_brightness_lut[100] = {
@@ -23,6 +22,7 @@ const shift_register_74hc595x_hwcfg_t k_shift_register_hwcfg = {
 };
 
 const shift_digit_hwcfg_t k_shift_digit_hwcfg = {
+    // Match segments to shift register output bits
     .seg_a = (1 << 0),
     .seg_b = (1 << 1),
     .seg_c = (1 << 2),
@@ -31,7 +31,10 @@ const shift_digit_hwcfg_t k_shift_digit_hwcfg = {
     .seg_f = (1 << 4),
     .seg_g = (1 << 6),
     .seg_h = (1 << 7),
+    // Shift register hardware config
     .shift_register_hwcfg = (void*)&k_shift_register_hwcfg,
-    .io_ena = IO_ENA,
+    // PWM pin for brightness control
+    .io_pwm = IO_ENA,
+    // int16_t[100] look up table to convert percent into PWM duty cycle (1-1023)
     .brightness_lut = k_brightness_lut,
 };
