@@ -1,5 +1,6 @@
 #include <kal.h>
 #include <msp430.h>
+#include <shift_clock.h>
 #include <stdlib.h>
 #include <stdint.h>
 
@@ -7,9 +8,6 @@
 
 #include "hal.h"
 #include "main.h"
-#include "shift_register.h"
-#include "shift_digit.h"
-#include "shift_clock.h"
 
 static date_t g_current;
 static uint16_t g_adcLight;
@@ -60,8 +58,8 @@ int main() {
     hal_gpio_cfg(IO_TX, HAL_IO_NC);
     hal_gpio_cfg(IO_RFU2, HAL_IO_NC);
     hal_gpio_cfg(IO_RFU7, HAL_IO_NC);
+    hal_gpio_cfg(IO_RFU14, HAL_IO_NC);
     hal_gpio_cfg(IO_RFU15, HAL_IO_NC);
-    hal_gpio_cfg(IO_RFU16, HAL_IO_NC);
 
     // Open timer A0
     hal_timer_A0_open();
@@ -89,10 +87,10 @@ int main() {
     shift_clock_print_full();
     shift_clock_wait(TIMER_BLINK, 1024);
 
-    // Time main timer. IRQ every 60s
+    // Main timer. IRQ every 60s
     hal_timer_A0_start(TIMER_COUNT, HAL_TIMER_CONTINOUS, time_increment, 0, (uint16_t)60*1024);
 
-    // Secondary timer. Blinks the semi-column
+    // Secondary timer. Semi-column blink and display update
     hal_timer_A0_start(TIMER_BLINK, HAL_TIMER_CONTINOUS, shift_clock_event_blink, 0, 512);
 
 //    test_light_sensor();
