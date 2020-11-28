@@ -26,9 +26,9 @@ typedef struct {
 } date_t;
 
 #include "shift_digit.h"
-#include <shift_clock_event.h>
-#include <shift_clock_input.h>
-#include <shift_clock_print.h>
+#include "shift_clock_event.h"
+#include "shift_clock_input.h"
+#include "shift_clock_print.h"
 
 void shift_clock_open(void);
 void shift_clock_wait(uint8_t tidx, uint16_t ti);

@@ -1,4 +1,6 @@
-#include <shift_clock.h>
+#include <string.h>
+
+#include "shift_clock.h"
 
 void shift_clock_print_time(date_t* date, bool dot)
 {

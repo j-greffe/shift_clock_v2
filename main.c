@@ -1,20 +1,53 @@
-#include <kal.h>
 #include <msp430.h>
-#include <shift_clock.h>
 #include <stdlib.h>
 #include <stdint.h>
 
 #include "hwcfg.h"
-
 #include "hal.h"
+#include "kal.h"
 #include "main.h"
+#include "shift_clock.h"
 
 static date_t g_current;
 static uint16_t g_adcLight;
+static bool g_blink_state;
+
+static void display_refresh(void)
+{
+    shift_clock_set_event(EVENT_DISPLAY_REFRESH);
+}
 
 static void time_increment(void* param)
 {
     shift_clock_set_event(EVENT_MINUTE_INCREMENT);
+}
+static void time_start(void)
+{
+    // Main timer. IRQ every 60s
+    hal_timer_A0_start(TIMER_COUNT, HAL_TIMER_CONTINOUS, time_increment, 0, (uint16_t)60*1024);
+}
+
+static void time_stop(void)
+{
+    hal_timer_A0_stop(TIMER_COUNT);
+}
+
+static void blink_callback(void* param)
+{
+    g_blink_state = !g_blink_state;
+    display_refresh();
+}
+
+static void blink_start(void)
+{
+    g_blink_state = true;
+    // Secondary timer. Semi-column blink and display update
+    hal_timer_A0_start(TIMER_BLINK, HAL_TIMER_CONTINOUS, blink_callback, 0, 512);
+}
+
+static void blink_stop(void)
+{
+    hal_timer_A0_stop(TIMER_BLINK);
 }
 
 static void light_measure_callback(void* adcValue)
@@ -23,27 +56,13 @@ static void light_measure_callback(void* adcValue)
     shift_clock_set_event(EVENT_LIGHT_MEASURE);
 }
 
-void test_light_sensor(void)
+void shift_clock_print_int(uint16_t i)
 {
-    uint8_t event;
-
-    hal_adc_start(INCH_4, light_measure_callback);
-    hal_timer_A0_start(TIMER_BLINK, HAL_TIMER_CONTINOUS, shift_clock_event_blink, 0, 512);
-
-    while (1)
-    {
-        event = shift_clock_wait_event(EVENT_ALL);
-
-        if (EVENT_BLINK_ON == event)
-        {
-            // Read ADC value of light sensor
-            hal_adc_start(INCH_4, light_measure_callback);
-        }
-        else if (EVENT_LIGHT_MEASURE == event)
-        {
-            //shift_clock_print_int(g_adcLight);
-        }
-    }
+    shift_digit_print_char((i % 10) + '0', false); i /= 10;
+    shift_digit_print_char((i % 10) + '0', false); i /= 10;
+    shift_digit_print_char((i % 10) + '0', false); i /= 10;
+    shift_digit_print_char(i + '0', false);
+    shift_digit_update();
 }
 
 int main() {
@@ -53,6 +72,12 @@ int main() {
     // Stop watchdog
     hal_wdg_stop();
 
+    // Clock to max frequency
+    hal_clk_open();
+
+    // Open timer A0
+    hal_timer_A0_open();
+
     // Set unused pins
     hal_gpio_cfg(IO_RX, HAL_IO_NC);
     hal_gpio_cfg(IO_TX, HAL_IO_NC);
@@ -60,9 +85,6 @@ int main() {
     hal_gpio_cfg(IO_RFU7, HAL_IO_NC);
     hal_gpio_cfg(IO_RFU14, HAL_IO_NC);
     hal_gpio_cfg(IO_RFU15, HAL_IO_NC);
-
-    // Open timer A0
-    hal_timer_A0_open();
 
     // Open KAL
     kal_dbg_open(HAL_IO_NONE);
@@ -87,19 +109,49 @@ int main() {
     shift_clock_print_full();
     shift_clock_wait(TIMER_BLINK, 1024);
 
-    // Main timer. IRQ every 60s
-    hal_timer_A0_start(TIMER_COUNT, HAL_TIMER_CONTINOUS, time_increment, 0, (uint16_t)60*1024);
+#if 0
 
-    // Secondary timer. Semi-column blink and display update
-    hal_timer_A0_start(TIMER_BLINK, HAL_TIMER_CONTINOUS, shift_clock_event_blink, 0, 512);
+    while (1)
+    {
+        hal_adc_start(INCH_4, light_measure_callback);
 
-//    test_light_sensor();
+        event = shift_clock_wait_event(EVENT_ALL);
+
+        shift_clock_print_int(g_adcLight);
+
+        shift_clock_wait(TIMER_BLINK, 1024);
+    }
+#endif
+
+    time_start();
+    blink_start();
 
     while(1) {
 
         event = shift_clock_wait_event(EVENT_ALL);
 
-        if (EVENT_MINUTE_INCREMENT == event)
+        if (EVENT_DISPLAY_REFRESH == event)
+        {
+            // Read ADC value of light sensor
+            hal_adc_start(INCH_4, light_measure_callback);
+
+            if (time_is_valid)
+            {
+                shift_clock_print_time(&g_current, g_blink_state);
+            }
+            else
+            {
+                if (g_blink_state)
+                {
+                    shift_clock_print_time(&g_current, true);
+                }
+                else
+                {
+                    shift_clock_print_blank();
+                }
+            }
+        }
+        else if (EVENT_MINUTE_INCREMENT == event)
         {
             g_current.minute++;
             if (g_current.minute > 59)
@@ -117,43 +169,37 @@ int main() {
         }
         else if (EVENT_BUTTON1_LONG_PRESS == event)
         {
-            hal_timer_A0_stop(TIMER_COUNT);
-            hal_timer_A0_stop(TIMER_BLINK);
+            time_stop();
+            blink_stop();
 
             shift_clock_input_new_time(&g_current);
             time_is_valid = true;
 
-            shift_clock_print_time(&g_current, true);
-
-            hal_timer_A0_start(TIMER_COUNT, HAL_TIMER_CONTINOUS, time_increment, 0, (uint16_t)60*1024);
-            hal_timer_A0_start(TIMER_BLINK, HAL_TIMER_CONTINOUS, shift_clock_event_blink, 0, 512);
+            time_start();
+            blink_start();
+            display_refresh();
         }
-        else if (EVENT_BLINK_ON == event)
+        else if (EVENT_BUTTON2_RELEASE == event)
         {
-            shift_clock_print_time(&g_current, true);
+            blink_stop();
 
-            // Read ADC value of light sensor
-            hal_adc_start(INCH_4, light_measure_callback);
-        }
-        else if (EVENT_BLINK_OFF == event)
-        {
-            if (time_is_valid)
-            {
-                shift_clock_print_time(&g_current, false);
-            }
-            else
-            {
-                shift_clock_print_blank();
-            }
+            // Test all segments
+            shift_clock_print_full();
+            shift_clock_wait(TIMER_BLINK, 1024);
+
+            blink_start();
+            display_refresh();
         }
         else if (EVENT_LIGHT_MEASURE == event)
         {
-#define LIGHT_LOW   300
-#define LIGHT_HIGH  500
-#define LIGHT_STEP  30
-#define LIGHT_MIN   10
-            // Adjust brightness
             uint8_t percent;
+
+#define LIGHT_LOW   500
+#define LIGHT_HIGH  900
+#define LIGHT_STEP  30
+#define LIGHT_MIN   1
+
+            // Adjust brightness
             static uint8_t percent_old;
 
             if (g_adcLight < LIGHT_LOW)
@@ -170,7 +216,7 @@ int main() {
             }
 
             // Update only if light change is significant
-            if (percent > percent_old + (LIGHT_STEP/2) || percent + (LIGHT_STEP/2) < percent_old || percent == 1 || percent == 100)
+            if (percent != percent_old && (percent > percent_old + (LIGHT_STEP/2) || percent + (LIGHT_STEP/2) < percent_old || percent == 1 || percent == 100))
             {
                 // Save new value
                 percent_old = percent;
